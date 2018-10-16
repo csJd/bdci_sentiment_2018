@@ -6,8 +6,8 @@ import pandas as pd
 import numpy as np
 from time import time
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
-from collections import defaultdict
-from sklearn.preprocessing import LabelEncoder, MultiLabelBinarizer
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MultiLabelBinarizer
 
 from utils.path_util import from_project_root
 from preprocessing.transformer import TfdcTransformer
@@ -20,6 +20,10 @@ def id2sub(subject_id):
     return SUBJECT_LIST[subject_id]
 
 
+def sub2id(subject):
+    return SUBJECT_LIST.index(subject)
+
+
 def get_subject_sent(data_df, content_id, subject):
     tmp_df = data_df[data_df['content_id'] == content_id]
     if subject not in tmp_df['subject'].values:
@@ -27,30 +31,54 @@ def get_subject_sent(data_df, content_id, subject):
     return int(tmp_df[tmp_df['subject'] == subject]['sentiment_value'])
 
 
-def label_to_10_column():
+def get_content_labels(data_df, content_id, kind='subjects'):
+    tmp_df = data_df[data_df['content_id'] == content_id]
+    ret = list()
+    for col in map(str, range(10)):
+        if int(tmp_df[col]) < 2:
+            ret.append(col if kind == 'subjects' else str(int(tmp_df[col])))
+    return ' '.join(ret)
+
+
+def data_to_multilabel():
     """ process data into 10 subject
     """
     train_df = pd.read_csv(from_project_root("data/train.csv"))
     test_df = pd.read_csv(from_project_root("data/test_public.csv"))
 
-    new_df = train_df[['content_id', 'content']].drop_duplicates()
-    for df in [new_df, test_df]:
-        df['content'] = df['content'].apply(lambda text: text.replace(' ', ''))
+    ml_df = train_df[['content_id', 'content']].drop_duplicates()
+    jieba.load_userdict(from_project_root('processed_data/user_dict.txt'))
+    for df in [ml_df, test_df]:
+        df['content'] = df['content'].apply(str.strip)
         df['word_seg'] = df['content'].apply(lambda text: ' '.join(jieba.cut(text)))
-        df['content'] = df['content'].apply(lambda text: ' '.join(text))
 
     for subject_id, subject in enumerate(SUBJECT_LIST):
-        new_df[str(subject_id)] = new_df['content_id'].apply(
+        ml_df[str(subject_id)] = ml_df['content_id'].apply(
             lambda cid: get_subject_sent(train_df, cid, subject))
 
+    for kind in ('subjects', 'sentiment'):
+        ml_df[kind] = ml_df['content_id'].apply(
+            lambda cid: get_content_labels(ml_df, cid, kind))
+
     test_df = test_df.rename(columns={'content': 'article'})
-    new_df = new_df.rename(columns={'content': 'article'})
-    new_df.to_csv(from_project_root("data/train_10.csv"), index=False)
-    test_df.to_csv(from_project_root("data/test_cut.csv"), index=False)
+    ml_df = ml_df.rename(columns={'content': 'article'})
+    ml_df.to_csv(from_project_root("processed_data/train_ml.csv"), index=False)
+    test_df.to_csv(from_project_root("processed_data/test_data.csv"), index=False)
+
+
+def split_data():
+    """ split data into train dta and validate data
+
+    """
+    data_df = pd.read_csv(from_project_root('processed_data/train_ml.csv'))
+    train_df, val_df = train_test_split(data_df, test_size=0.1, shuffle=True, random_state=233)
+    train_df.to_csv(from_project_root('processed_data/train_data.csv'), index=False)
+    val_df.to_csv(from_project_root('processed_data/val_data.csv'), index=False)
 
 
 def generate_vectors(train_url, test_url=None, column='article', trans_type=None, max_n=1, min_df=1, max_df=1.0,
-                     max_features=1, sublinear_tf=True, balanced=False, re_weight=0, verbose=False, drop_words=0):
+                     max_features=1, sublinear_tf=True, balanced=False, re_weight=0, verbose=False, drop_words=0,
+                     multilabel_out = False, label_col='subjects'):
     """ generate X, y, X_test vectors with csv(with header) url use pandas and CountVectorizer
 
     Args:
@@ -67,6 +95,8 @@ def generate_vectors(train_url, test_url=None, column='article', trans_type=None
         re_weight: re_weight for TfdcTransformer
         verbose: True to show more information
         drop_words: randomly delete some words from sentences
+        multilabel_out: return y as multilabel format
+        label_col: col name of label
 
     Returns:
         X, y, X_test
@@ -74,10 +104,11 @@ def generate_vectors(train_url, test_url=None, column='article', trans_type=None
     """
     verbose and print("loading '%s' level data from %s with pandas" % (column, train_url))
 
-    train_df = None  # load_to_df(train_url)
+    train_df = pd.read_csv(train_url)
 
     # vectorizer
-    vec = CountVectorizer(ngram_range=(1, max_n), min_df=min_df, max_df=max_df,
+    analyzer = 'word' if column == 'word_seg' else 'char'
+    vec = CountVectorizer(analyzer=analyzer, ngram_range=(1, max_n), min_df=min_df, max_df=max_df,
                           max_features=max_features, token_pattern='\w+')
     s_time = time()
     verbose and print("finish loading, vectorizing")
@@ -102,13 +133,16 @@ def generate_vectors(train_url, test_url=None, column='article', trans_type=None
         trans = TfdcTransformer(sublinear_tf=sublinear_tf, balanced=balanced, re_weight=re_weight)
 
     verbose and print("transformer params:", trans.get_params())
-    y = np.array((train_df["class"]).astype(int))
+    if multilabel_out:
+        y = MultiLabelBinarizer().fit_transform(train_df[label_col].apply(str.split))
+    else:
+        y = train_df[label_col].apply(lambda labels: int(labels.split()[0])).values
     X = trans.fit_transform(X, y)
 
     X_test = None
     if test_url:
         verbose and print("transforming test set")
-        test_df = None  # load_to_df(test_url)
+        test_df = pd.read_csv(test_url)
         X_test = vec.transform(test_df[column])
         X_test = trans.transform(X_test)
 
@@ -118,7 +152,8 @@ def generate_vectors(train_url, test_url=None, column='article', trans_type=None
 
 
 def main():
-    # label_to_10_column()
+    # data_to_multilabel()
+    # split_data()
     pass
 
 
