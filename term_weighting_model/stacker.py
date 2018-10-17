@@ -95,9 +95,11 @@ def run_parallel(index, train_url, test_url, params, clf, n_splits, random_state
     return index, y_pred_proba, y_test_pred_proba
 
 
-def feature_stacking(n_splits=CV, random_state=None, use_proba=False, verbose=False, drop_words=0.):
+def feature_stacking(train_url, test_url, n_splits=CV, random_state=None, use_proba=False, verbose=False, drop_words=0.):
     """
     Args:
+        train_url: url to original train data
+        test_url: url to original test data
         n_splits: n_splits for KFold
         random_state: random_state for KFlod
         use_proba: True to predict probabilities of labels instead of labels
@@ -108,8 +110,6 @@ def feature_stacking(n_splits=CV, random_state=None, use_proba=False, verbose=Fa
     """
 
     clf = LinearSVC()
-    train_url = from_project_root("processed_data/train_ml.csv")
-    test_url = from_project_root("processed_data/test_data.csv")
     # test_url = None
     X, y, X_test = generate_vectors(train_url, test_url, sublinear_tf=False)  # for X.shape
 
@@ -224,8 +224,10 @@ def generate_meta_feature(data_url, normalize=True):
 def main():
     params = load_params()
     print("len(params) =", len(params))
-    save_url = from_project_root("processed_data/vector/stacked_all_subj_XyX_test_%d.pk" % len(load_params()))
-    joblib.dump(feature_stacking(use_proba=True, random_state=RANDOM_STATE, drop_words=DROP_WORDS), save_url)
+    save_url = from_project_root("processed_data/vector/stacked_all_XyX_test_%d_subj.pk" % len(load_params()))
+    train_url = from_project_root("processed_data/train_ml.csv")
+    test_url = from_project_root("processed_data/test_data.csv")
+    joblib.dump(feature_stacking(train_url, test_url, use_proba=True, random_state=RANDOM_STATE, drop_words=DROP_WORDS), save_url)
 
 
 if __name__ == '__main__':
