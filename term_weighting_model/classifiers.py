@@ -3,7 +3,7 @@
 
 from time import time
 from sklearn.model_selection import cross_validate
-# from xgboost.sklearn import XGBClassifier
+from xgboost.sklearn import XGBClassifier
 from sklearn.svm import SVC, LinearSVC
 from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold
 from sklearn.externals import joblib
@@ -46,33 +46,35 @@ def validate_clf(clf, X, y):
     print('mean micro_f1 on val set: %f\n' % test_scores.mean())
 
 
-def calc_f1(clf, X_val, threshold=0.139):
-    """ validating clf according metrics described on info page
+def calc_f1(clf, X_val, val_url, senti=None, threshold=0.139):
+    """ validating clf according metrics described in info page
 
     Args:
         clf: classifier
         X_val: val data
-        threshold:  threshold to be predicted
-
-    Returns:
+        val_url: url to validation csv file
+        senti: sentiment of each content in val data
+        threshold:  threshold to be predicted as subject
 
     """
-    pred = predict_proba(clf, X_val).values.ravel()
-    val = pd.read_csv(from_project_root('processed_data/val_data.csv'),
-                      usecols=list(map(str, range(10)))).values.ravel()
+    pred = predict_proba(clf, X_val).values
+    true = pd.read_csv(val_url, usecols=list(map(str, range(10)))).values
     pred[pred < threshold] = 2
     pred[pred < 2] = 0
-    pred.astype(int)
     tp, fp, fn = 0, 0, 0
-    for i, j in zip(val, pred):
-        if i > 1 and j > 1:
-            continue
-        if i > 1:
-            fp += 1
-        elif i == j:
-            tp += 1
-        else:
-            fn += 1
+    if senti is None:
+        senti = np.zeros(pred.shape[0])
+    for i in range(pred.shape[0]):
+        for j in range(pred.shape[1]):
+            if true[i][j] > 1 and pred[i][j] > 1:  # both == 2
+                continue
+            if pred[i][j] > 1:  # pred == 2 and true < 2, miss predicted
+                fn += 1
+            elif true[i][j] == senti[i]:  # correctly predicted
+                tp += 1
+            else:  # (true == 2 and pred < 2) or true != pred, wrongly predicted
+                fp += 1
+
     print(tp, fp, fn, tp + fn)
     recall = tp / (tp + fn)
     precision = tp / (tp + fp)
@@ -141,43 +143,45 @@ def validating():
     """
     clfs = init_clfs()
     # load from pickle
-    pk_url = from_project_root("processed_data/vector/stacked_all_subj_XyX_test_48.pk")
-    print("loading data from", pk_url)
-    X, y, X_val = joblib.load(pk_url)
+    # pk_url = from_project_root("processed_data/vector/stacked_all_subj_XyX_test_48.pk")
+    # print("loading data from", pk_url)
+    # X, y, X_val = joblib.load(pk_url)
 
-    # train_url = from_project_root("processed_data/train_data.csv")
-    # val_url = from_project_root("processed_data/val_data.csv")
+    train_url = from_project_root("processed_data/train_data.csv")
+    val_url = from_project_root("processed_data/val_data.csv")
     # generate from original csv
-    # X, y, X_val = generate_vectors(train_url, val_url, column='article', max_n=3, min_df=2, max_df=0.8,
-    #                                max_features=200000, trans_type='dc', sublinear_tf=True, balanced=False,
-    #                                multilabel_out=False, label_col='subjects')
+    X, y, X_val = generate_vectors(train_url, val_url, column='article', max_n=3, min_df=2, max_df=0.8,
+                                   max_features=200000, trans_type='dc', sublinear_tf=True, balanced=False,
+                                   multilabel_out=False, label_col='subjects')
 
     print(X.shape, y.shape, X_val.shape)
     train_clfs(clfs, X, y, validating=True, random_state=RANDOM_STATE)
     clf = LinearSVC()
+    # clf = XGBClassifier(n_jobs=-1)
     clf.fit(X, y)
-    calc_f1(clf, X_val, threshold=0.139)
+    calc_f1(clf, X_val, val_url=val_url, senti=None, threshold=0.132)
 
 
 def generate_result():
     train_url = from_project_root("processed_data/train_ml.csv")
-    test_url = from_project_root("processed_data/test_seg.csv")
-    # X, y, X_test = generate_vectors(train_url, test_url, column='article', max_n=3, min_df=2, max_df=0.8,
-    #                                 max_features=200000, trans_type='dc', sublinear_tf=True, balanced=False,
-    #                                 multilabel_out=False, label_col='subjects')
-    X, y, X_test = joblib.load(from_project_root('processed_data/vector/stacked_all_subj_XyX_test_48.pk'))
+    test_url = from_project_root("processed_data/test_data.csv")
+    X, y, X_test = generate_vectors(train_url, test_url, column='article', max_n=3, min_df=2, max_df=0.8,
+                                    max_features=200000, trans_type='dc', sublinear_tf=True, balanced=False,
+                                    multilabel_out=False, label_col='subjects')
+    # X, y, X_test = joblib.load(from_project_root('processed_data/vector/stacked_all_XyX_test_48_subj.pk'))
 
     clf = LinearSVC()
+    # clf = XGBClassifier(n_jobs=N_JOBS)
     clf.fit(X, y)
     probas = predict_proba(clf, X_test).values
     cids = pd.read_csv(test_url, usecols=['content_id']).values.ravel()
-    result_file = open(from_project_root('processed_data/result/baseline_dc_3_200000.csv'),
+    result_file = open(from_project_root('processed_data/result/baseline_dc.csv'),
                        'w', newline='\n', encoding='utf-8')
     result_file.write("content_id,subject,sentiment_value,sentiment_word" + "\n")
     for i, cid in enumerate(cids):
         no_result = True
         for j in range(N_CLASSES):
-            if probas[i][j] > 0.139:
+            if probas[i][j] > 0.133:
                 no_result = False
                 out = ','.join([cid, id2sub(j), '0', '\n'])
                 result_file.write(out)
