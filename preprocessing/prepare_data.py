@@ -78,7 +78,7 @@ def split_data():
 
 def generate_vectors(train_url, test_url=None, column='article', trans_type=None, max_n=1, min_df=1, max_df=1.0,
                      max_features=1, sublinear_tf=True, balanced=False, re_weight=0, verbose=False, drop_words=0,
-                     multilabel_out = False, label_col='subjects'):
+                     multilabel_out=False, label_col='subjects', shuffle=True):
     """ generate X, y, X_test vectors with csv(with header) url use pandas and CountVectorizer
 
     Args:
@@ -97,6 +97,7 @@ def generate_vectors(train_url, test_url=None, column='article', trans_type=None
         drop_words: randomly delete some words from sentences
         multilabel_out: return y as multilabel format
         label_col: col name of label
+        shuffle: re sample train data
 
     Returns:
         X, y, X_test
@@ -105,6 +106,8 @@ def generate_vectors(train_url, test_url=None, column='article', trans_type=None
     verbose and print("loading '%s' level data from %s with pandas" % (column, train_url))
 
     train_df = pd.read_csv(train_url)
+    if shuffle:
+        train_df = train_df.sample(frac=1)
 
     # vectorizer
     analyzer = 'word' if column == 'word_seg' else 'char'
