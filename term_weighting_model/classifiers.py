@@ -143,23 +143,23 @@ def validating():
     """
     clfs = init_clfs()
     # load from pickle
-    # pk_url = from_project_root("processed_data/vector/stacked_all_subj_XyX_test_48.pk")
-    # print("loading data from", pk_url)
-    # X, y, X_val = joblib.load(pk_url)
+    pk_url = from_project_root("processed_data/vector/stacked_all_XyX_val_48_subjects.pk")
+    print("loading data from", pk_url)
+    X, y, X_val = joblib.load(pk_url)
 
     train_url = from_project_root("processed_data/train_data.csv")
     val_url = from_project_root("processed_data/val_data.csv")
     # generate from original csv
-    X, y, X_val = generate_vectors(train_url, val_url, column='article', max_n=3, min_df=2, max_df=0.8,
-                                   max_features=200000, trans_type='dc', sublinear_tf=True, balanced=False,
-                                   multilabel_out=False, label_col='subjects')
+    # X, y, X_val = generate_vectors(train_url, val_url, column='article', max_n=3, min_df=2, max_df=0.8,
+    #                                max_features=200000, trans_type='dc', sublinear_tf=True, balanced=False,
+    #                                multilabel_out=False, label_col='subjects')
 
     print(X.shape, y.shape, X_val.shape)
     train_clfs(clfs, X, y, validating=True, random_state=RANDOM_STATE)
-    clf = LinearSVC()
-    # clf = XGBClassifier(n_jobs=-1)
-    clf.fit(X, y)
-    calc_f1(clf, X_val, val_url=val_url, senti=None, threshold=0.132)
+    for name in clfs:
+        print("metrics of %s classifier:" % name)
+        clfs[name].fit(X, y)
+        calc_f1(clfs[name], X_val, val_url=val_url, senti=None, threshold=0.150)
 
 
 def generate_result():
@@ -168,7 +168,7 @@ def generate_result():
     X, y, X_test = generate_vectors(train_url, test_url, column='article', max_n=3, min_df=2, max_df=0.8,
                                     max_features=200000, trans_type='dc', sublinear_tf=True, balanced=False,
                                     multilabel_out=False, label_col='subjects')
-    # X, y, X_test = joblib.load(from_project_root('processed_data/vector/stacked_all_XyX_test_48_subj.pk'))
+    # X, y, X_test = joblib.load(from_project_root('processed_data/vector/stacked_all_XyX_test_48_subjects.pk'))
 
     clf = LinearSVC()
     # clf = XGBClassifier(n_jobs=N_JOBS)
@@ -191,8 +191,8 @@ def generate_result():
 
 
 def main():
-    # validating()
-    generate_result()
+    validating()
+    # generate_result()
     pass
 
 

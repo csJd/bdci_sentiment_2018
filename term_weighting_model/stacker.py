@@ -22,6 +22,7 @@ RANDOM_STATE = 233
 DROP_WORDS = 0
 N_JOBS = 10
 CV = 5
+LABEL_COL = 'subjects'
 
 
 def load_params():
@@ -69,7 +70,7 @@ def run_parallel(index, train_url, test_url, params, clf, n_splits, random_state
     """
 
     X, y, X_test = generate_vectors(train_url, test_url, drop_words=drop_words, verbose=verbose,
-                                    label_col='subjects', **params)
+                                    label_col=LABEL_COL, shuffle=False, **params)
     if not sp.sparse.isspmatrix_csr(X):
         X = sp.sparse.csr_matrix(X)
 
@@ -111,7 +112,7 @@ def feature_stacking(train_url, test_url, n_splits=CV, random_state=None, use_pr
 
     clf = LinearSVC()
     # test_url = None
-    X, y, X_test = generate_vectors(train_url, test_url, sublinear_tf=False)  # for X.shape
+    X, y, X_test = generate_vectors(train_url, test_url, shuffle=False, sublinear_tf=False)  # for X.shape
 
     params_list = load_params()
     parallel = joblib.Parallel(n_jobs=N_JOBS, verbose=True)
@@ -224,9 +225,9 @@ def generate_meta_feature(data_url, normalize=True):
 def main():
     params = load_params()
     print("len(params) =", len(params))
-    save_url = from_project_root("processed_data/vector/stacked_all_XyX_test_%d_subj.pk" % len(load_params()))
-    train_url = from_project_root("processed_data/train_ml.csv")
-    test_url = from_project_root("processed_data/test_data.csv")
+    save_url = from_project_root("processed_data/vector/stacked_all_XyX_val_%d_%s.pk" % (len(load_params()), LABEL_COL))
+    train_url = from_project_root("processed_data/train_data.csv")
+    test_url = from_project_root("processed_data/val_data.csv")
     joblib.dump(feature_stacking(train_url, test_url, use_proba=True, random_state=RANDOM_STATE, drop_words=DROP_WORDS), save_url)
 
 
