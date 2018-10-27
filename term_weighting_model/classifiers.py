@@ -23,17 +23,17 @@ RANDOM_STATE = 10
 CV = 5
 
 
-def validate_clf(clf, X, y):
+def validate_clf(clf, X, y, scoring='f1_macro'):
     """ do cross validation on clf
 
     Args:
         clf: clf to be tuned
         X: X for fit
         y: y for fit
+        scoring: scoring for cross validate
 
     """
     s_time = time()
-    scoring = 'f1_micro'
     cv_result = cross_validate(clf, X, y, cv=CV, scoring=scoring, n_jobs=N_JOBS, return_train_score=True)
     train_scores = cv_result['train_score']
     test_scores = cv_result['test_score']
@@ -43,7 +43,7 @@ def validate_clf(clf, X, y):
     print("metrics of each cv: ")
     for i in range(CV):
         print(" train_f1 %f, val_f1 %f" % (train_scores[i], test_scores[i]))
-    print('mean micro_f1 on val set: %f\n' % test_scores.mean())
+    print('mean %s on val set: %f\n' % (scoring, test_scores.mean()))
 
 
 def calc_f1(clf, X_val, val_url, senti=None, threshold=0.139):
@@ -136,38 +136,41 @@ def train_clfs(clfs, X, y, test_size=0.2, validating=False, random_state=None):
     return clfs
 
 
-def validating():
+def validating(pkl_url=None):
     """ do validating
 
+        Args:
+            pkl_url: load data from pickle file, set to None to generate data instantly
 
     """
     clfs = init_clfs()
-    # load from pickle
-    pk_url = from_project_root("processed_data/vector/stacked_all_XyX_val_48_subjects.pk")
-    print("loading data from", pk_url)
-    X, y, X_val = joblib.load(pk_url)
+    val_url = from_project_root("processed_data/val_gold.csv")
+    if pkl_url is not None:
+        # load from pickle
+        print("loading data from", pkl_url)
+        X, y, X_val = joblib.load(pkl_url)
 
-    train_url = from_project_root("processed_data/train_data.csv")
-    val_url = from_project_root("processed_data/val_data.csv")
-    # generate from original csv
-    # X, y, X_val = generate_vectors(train_url, val_url, column='article', max_n=3, min_df=2, max_df=0.8,
-    #                                max_features=200000, trans_type='dc', sublinear_tf=True, balanced=False,
-    #                                multilabel_out=False, label_col='subjects')
+    else:
+        train_url = from_project_root("processed_data/preliminary/train_ml.csv")
+        # generate from original csv
+        X, y, X_val = generate_vectors(train_url, val_url, column='article', max_n=3, min_df=2, max_df=0.8,
+                                       max_features=200000, trans_type='dc', sublinear_tf=True, balanced=False,
+                                       multilabel_out=False, label_col='subjects', shuffle=True)
 
     print(X.shape, y.shape, X_val.shape)
     train_clfs(clfs, X, y, validating=True, random_state=RANDOM_STATE)
     for name in clfs:
         print("metrics of %s classifier:" % name)
         clfs[name].fit(X, y)
-        calc_f1(clfs[name], X_val, val_url=val_url, senti=None, threshold=0.150)
+        calc_f1(clfs[name], X_val, val_url=val_url, senti=None, threshold=0.136)
 
 
 def generate_result():
-    train_url = from_project_root("processed_data/train_ml.csv")
+    train_url = from_project_root("processed_data/train_data.csv")
     test_url = from_project_root("processed_data/test_data.csv")
     X, y, X_test = generate_vectors(train_url, test_url, column='article', max_n=3, min_df=2, max_df=0.8,
                                     max_features=200000, trans_type='dc', sublinear_tf=True, balanced=False,
-                                    multilabel_out=False, label_col='subjects')
+                                    multilabel_out=False, label_col='subjects', shuffle=True)
     # X, y, X_test = joblib.load(from_project_root('processed_data/vector/stacked_all_XyX_test_48_subjects.pk'))
 
     clf = LinearSVC()
@@ -181,7 +184,7 @@ def generate_result():
     for i, cid in enumerate(cids):
         no_result = True
         for j in range(N_CLASSES):
-            if probas[i][j] > 0.133:
+            if probas[i][j] > 0.135:
                 no_result = False
                 out = ','.join([cid, id2sub(j), '0', '\n'])
                 result_file.write(out)

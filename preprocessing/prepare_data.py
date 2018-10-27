@@ -40,11 +40,32 @@ def get_content_labels(data_df, content_id, kind='subjects'):
     return ' '.join(ret)
 
 
-def data_to_multilabel():
-    """ process data into 10 subject
+def gen_rematch_val():
+    """ Use train data of rematch to generate gold result of test data in preliminary
+
     """
-    train_df = pd.read_csv(from_project_root("data/train.csv"))
+    train_df = pd.read_csv(from_project_root("data/train_2.csv"))
     test_df = pd.read_csv(from_project_root("data/test_public.csv"))
+    val_df = test_df.merge(train_df, on='content') \
+        .drop(columns=['content_id_y']) \
+        .rename(columns={'content_id_x': 'content_id'})
+    val_df.to_csv(from_project_root('data/test_gold.csv'), index=False)
+
+    test_df = pd.read_csv(from_project_root("data/test_public_2.csv"))
+    test_df = test_df[~test_df['content_id'].isin(val_df['content_id'])]
+    test_df.to_csv('data/test.csv', index=False)
+
+
+def data_to_multilabel(train_url, test_url):
+    """ process data into 10 subject
+
+        Args:
+            train_url: url to train data
+            test_url: url to test data
+
+    """
+    train_df = pd.read_csv(train_url)
+    test_df = pd.read_csv(test_url)
 
     ml_df = train_df[['content_id', 'content']].drop_duplicates()
     jieba.load_userdict(from_project_root('processed_data/user_dict.txt'))
@@ -155,7 +176,9 @@ def generate_vectors(train_url, test_url=None, column='article', trans_type=None
 
 
 def main():
-    # data_to_multilabel()
+    train_url = from_project_root("data/train_2.csv")
+    test_url = from_project_root("data/test_public_2.csv")
+    # data_to_multilabel(train_url, test_url)
     # split_data()
     pass
 
