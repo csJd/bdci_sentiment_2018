@@ -56,35 +56,35 @@ def gen_rematch_val():
     test_df.to_csv('data/test.csv', index=False)
 
 
-def data_to_multilabel(train_url, test_url):
+def data_extent(data_url):
     """ process data into 10 subject
 
         Args:
-            train_url: url to train data
-            test_url: url to test data
+            data_url: url to original data file
 
     """
-    train_df = pd.read_csv(train_url)
-    test_df = pd.read_csv(test_url)
+    df_orig = pd.read_csv(data_url)
 
-    ml_df = train_df[['content_id', 'content']].drop_duplicates()
+    df = df_orig[['content_id', 'content']].drop_duplicates()
     jieba.load_userdict(from_project_root('processed_data/user_dict.txt'))
-    for df in [ml_df, test_df]:
-        df['content'] = df['content'].apply(str.strip)
-        df['word_seg'] = df['content'].apply(lambda text: ' '.join(jieba.cut(text)))
 
-    for subject_id, subject in enumerate(SUBJECT_LIST):
-        ml_df[str(subject_id)] = ml_df['content_id'].apply(
-            lambda cid: get_subject_sent(train_df, cid, subject))
+    df['content'] = df['content'].apply(str.strip)
+    df['word_seg'] = df['content'].apply(lambda text: ' '.join(jieba.cut(text)))
+    df['cut_all'] = df['content'].apply(lambda text: ' '.join(jieba.cut(text, cut_all=True)))
+    df['cut_for_search'] = df['content'].apply(lambda text: ' '.join(jieba.cut_for_search(text)))
 
-    for kind in ('subjects', 'sentiment'):
-        ml_df[kind] = ml_df['content_id'].apply(
-            lambda cid: get_content_labels(ml_df, cid, kind))
+    if 'subject' in df_orig:
+        for subject_id, subject in enumerate(SUBJECT_LIST):
+            df[str(subject_id)] = df['content_id'].apply(
+                lambda cid: get_subject_sent(df_orig, cid, subject))
 
-    test_df = test_df.rename(columns={'content': 'article'})
-    ml_df = ml_df.rename(columns={'content': 'article'})
-    ml_df.to_csv(from_project_root("processed_data/train_ml.csv"), index=False)
-    test_df.to_csv(from_project_root("processed_data/test_data.csv"), index=False)
+        for kind in ('subjects', 'sentiment'):
+            df[kind] = df['content_id'].apply(
+                lambda cid: get_content_labels(df, cid, kind))
+
+    df = df.rename(columns={'content': 'article'})
+    save_url = data_url.replace('.csv', '_ex.csv')
+    df.to_csv(save_url, index=False)
 
 
 def split_data():
@@ -99,7 +99,7 @@ def split_data():
 
 def generate_vectors(train_url, test_url=None, column='article', trans_type=None, max_n=1, min_df=1, max_df=1.0,
                      max_features=1, sublinear_tf=True, balanced=False, re_weight=0, verbose=False, drop_words=0,
-                     multilabel_out=False, label_col='subjects', shuffle=True):
+                     multilabel_out=False, label_col='subjects', only_single=True, shuffle=True):
     """ generate X, y, X_test vectors with csv(with header) url use pandas and CountVectorizer
 
     Args:
@@ -118,6 +118,7 @@ def generate_vectors(train_url, test_url=None, column='article', trans_type=None
         drop_words: randomly delete some words from sentences
         multilabel_out: return y as multilabel format
         label_col: col name of label
+        only_single: only keep records of single label
         shuffle: re sample train data
 
     Returns:
@@ -129,6 +130,8 @@ def generate_vectors(train_url, test_url=None, column='article', trans_type=None
     train_df = pd.read_csv(train_url)
     if shuffle:
         train_df = train_df.sample(frac=1)
+    if only_single:
+        train_df = train_df[train_df['subjects'].apply(lambda x: len(x) < 2)]
 
     # vectorizer
     analyzer = 'word' if column == 'word_seg' else 'char'
@@ -176,10 +179,8 @@ def generate_vectors(train_url, test_url=None, column='article', trans_type=None
 
 
 def main():
-    train_url = from_project_root("data/train_2.csv")
-    test_url = from_project_root("data/test_public_2.csv")
-    # data_to_multilabel(train_url, test_url)
-    # split_data()
+    data_url = from_project_root("processed_data/preliminary/one_train.csv")
+    data_extent(data_url)
     pass
 
 
