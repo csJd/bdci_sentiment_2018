@@ -56,8 +56,8 @@ def gen_rematch_val():
     test_df.to_csv('data/test.csv', index=False)
 
 
-def data_extent(data_url):
-    """ process data into 10 subject
+def extend_data(data_url):
+    """ generate more information into data file
 
         Args:
             data_url: url to original data file
@@ -180,7 +180,7 @@ def generate_vectors(train_url, test_url=None, column='article', trans_type=None
 
 def main():
     data_url = from_project_root("processed_data/preliminary/one_train.csv")
-    data_extent(data_url)
+    extend_data(data_url)
     pass
 
 
