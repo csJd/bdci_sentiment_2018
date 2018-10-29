@@ -1,7 +1,8 @@
 ## 数据集基本情况
     
 * 文件基本说明
-    * 共有 9947个训练样本, 2365个测试样本
+    * 初赛共有 9947 个训练样本, 2365 个测试样本
+    * 复赛共有 12572 个训练样本， 2753 个测试样本
     * 第0列(id)       ：文章id  
     * 第1列(article)  ：「字」级别上的表示 
     * 第2列(word_seg) ：「词」级别上的表示  
@@ -14,19 +15,28 @@
     
     * 情感统计（情感分 3 类）
       * -1: 1616, 0: 6661, 1: 1670
+      
+    * 主题数量统计
+      * 初赛测试集：1: 2146, 2: 180, 3: 33, 4: 5
+      * 复赛测试集：1: 2572, 2: 154, 3: 20, 4: 6
+      * 复赛训练集：1: 9182, 2: 1130, 3: 264, 4: 57, 5: 17, 6: 3, 7: 1
+      
 
-## processed_data/数据文件说明
+## data/ 数据文件说明
+* ./ 下载的数据文件
     
-* saved_weight/  各种格式保存的权值文件
+* processed/  经过手动处理的文件
 
 * vector/ 保存数据向量化的结果
 		
 * result/ 保存结果相关文件
 
+* preliminary/ 初赛相关数据文件
+
 
 ## utils 下部分工具方法说明
 
-* `json_util`, 将`dict`类型保存到json文件可以看到数据而且读入方便，个人觉得比pickle更适合保存dict和list类型
+* `json_util`, 将 `dict` 类型保存到 json 文件可以看到数据而且读入方便，个人觉得比 pickle 更适合保存 dict 和 list 类型
 ```python
 from utils.path_util import from_project_root
 import utils.json_util as ju
@@ -36,7 +46,7 @@ ju.dump(bdc_dict, bdc_json_url)  # dump dict object to json file
 ```
 
 * `data_util`, 提供一些读入和操作数据的公用方法
-  * `train_dev_split`, 将csv数据文件8:2划分为固定的训练集和验证集
+  * `train_dev_split`, 将 csv 数据文件 8:2 划分为固定的训练集和验证集
 
         
 ## Git使用说明
@@ -54,12 +64,12 @@ git commit -m "message"
 git pull
 git push
 ```
-  * 对git不熟悉可以使用Pycharm快捷键`Ctrl + T` pull， 然后`Ctrl + K` push
+  * 对 git 不熟悉可以使用Pycharm快捷键 `Ctrl + T` pull， 然后 `Ctrl + K` push
 
 * pull 更改
   * pull 其他人对项目文件作更改, 运行 `git pull` 即可
   
-* 使用git尽量不要修改别人写的代码，而是调用其中的方法
+* 使用 git 尽量不要修改别人写的代码，而是调用其中的方法
    
 
 ## Pycharm 建议设置
