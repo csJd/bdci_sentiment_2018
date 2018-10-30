@@ -13,7 +13,7 @@ def evaluate(pred_url):
 
     """
     usecols = ['content_id', 'subject', 'sentiment_value']
-    true_df = pd.read_csv(from_project_root('data/test_gold.csv'), usecols=usecols)
+    true_df = pd.read_csv(from_project_root('data/preliminary/test_gold.csv'), usecols=usecols)
     pred_df = pd.read_csv(pred_url, usecols=usecols)
 
     # tp：判断正确的数量;
@@ -27,7 +27,7 @@ def evaluate(pred_url):
     recall = tp / (tp + fn)
     precision = tp / (tp + fp)
     micro_f1 = 2 * recall * precision / (recall + precision)
-    print("metrics on evaluation set: \n recall = %f, precision = %f, micro_f1 = %f\n"
+    print("metrics on test set of preliminary: \n recall = %f, precision = %f, micro_f1 = %f\n"
           % (recall, precision, micro_f1))
 
 

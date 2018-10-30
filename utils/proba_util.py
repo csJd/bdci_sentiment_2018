@@ -25,7 +25,7 @@ def pk_to_csv(pk_url):
     return proba_df
 
 
-def predict_proba(clf, X_test, X=None, y=None, save_url=None):
+def predict_proba(clf, X_test, X=None, y=None, save_url=None, n_classes=None):
     """ train clf and get proba predict
 
     Args:
@@ -34,6 +34,7 @@ def predict_proba(clf, X_test, X=None, y=None, save_url=None):
         y: y for fit
         X_test: X_test for predict
         save_url: url to save result, not save if set it to None
+        n_classes: num of classes
 
     Returns:
         DataFrame: proba_df
@@ -50,6 +51,9 @@ def predict_proba(clf, X_test, X=None, y=None, save_url=None):
         clf = CalibratedClassifierCV(clf)
         clf.fit(X, y)
         proba = clf.predict_proba(X_test)
+
+    if n_classes is None:
+        return proba
 
     proba_df = pd.DataFrame(proba, columns=['class_prob_' + str(i + 1) for i in range(N_CLASSES)])
     if save_url is None:

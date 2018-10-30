@@ -66,7 +66,7 @@ def extend_data(data_url):
     df_orig = pd.read_csv(data_url)
 
     df = df_orig[['content_id', 'content']].drop_duplicates()
-    jieba.load_userdict(from_project_root('processed_data/user_dict.txt'))
+    jieba.load_userdict(from_project_root('data/processed/user_dict.txt'))
 
     df['content'] = df['content'].apply(str.strip)
     df['word_seg'] = df['content'].apply(lambda text: ' '.join(jieba.cut(text)))
@@ -81,6 +81,8 @@ def extend_data(data_url):
         for kind in ('subjects', 'sentiment'):
             df[kind] = df['content_id'].apply(
                 lambda cid: get_content_labels(df, cid, kind))
+
+        df['n_subjects'] = df['subjects'].apply(lambda subs: len(subs.split()))
 
     df = df.rename(columns={'content': 'article'})
     save_url = data_url.replace('.csv', '_ex.csv')
@@ -99,7 +101,8 @@ def split_data():
 
 def generate_vectors(train_url, test_url=None, column='article', trans_type=None, max_n=1, min_df=1, max_df=1.0,
                      max_features=1, sublinear_tf=True, balanced=False, re_weight=0, verbose=False, drop_words=0,
-                     multilabel_out=False, label_col='subjects', only_single=True, shuffle=True):
+                     multilabel_out=False, label_col='subjects', only_single=True, shuffle=True,
+                     apply_fun=lambda labels: int(labels.split()[0])):
     """ generate X, y, X_test vectors with csv(with header) url use pandas and CountVectorizer
 
     Args:
@@ -120,6 +123,7 @@ def generate_vectors(train_url, test_url=None, column='article', trans_type=None
         label_col: col name of label
         only_single: only keep records of single label
         shuffle: re sample train data
+        apply_fun: callable to be applied on label column
 
     Returns:
         X, y, X_test
@@ -163,7 +167,11 @@ def generate_vectors(train_url, test_url=None, column='article', trans_type=None
     if multilabel_out:
         y = MultiLabelBinarizer().fit_transform(train_df[label_col].apply(str.split))
     else:
-        y = train_df[label_col].apply(lambda labels: int(labels.split()[0])).values
+        if apply_fun is None:
+            y = train_df[label_col].values
+        else:
+            y = train_df[label_col].apply(apply_fun).values
+
     X = trans.fit_transform(X, y)
 
     X_test = None
@@ -179,7 +187,7 @@ def generate_vectors(train_url, test_url=None, column='article', trans_type=None
 
 
 def main():
-    data_url = from_project_root("processed_data/preliminary/one_train.csv")
+    data_url = from_project_root("data/train_2.csv")
     extend_data(data_url)
     pass
 

@@ -16,6 +16,7 @@ import pandas as pd
 from preprocessing.prepare_data import generate_vectors, id2sub
 from utils.path_util import from_project_root
 from utils.proba_util import predict_proba
+from utils.evaluate import evaluate
 
 N_JOBS = 6
 N_CLASSES = 10
@@ -23,7 +24,7 @@ RANDOM_STATE = 10
 CV = 5
 
 
-def validate_clf(clf, X, y, scoring='f1_macro'):
+def validate_clf(clf, X, y, scoring='f1_micro'):
     """ do cross validation on clf
 
     Args:
@@ -43,7 +44,7 @@ def validate_clf(clf, X, y, scoring='f1_macro'):
     print("metrics of each cv: ")
     for i in range(CV):
         print(" train_f1 %f, val_f1 %f" % (train_scores[i], test_scores[i]))
-    print('mean %s on val set: %f\n' % (scoring, test_scores.mean()))
+    print('averaged %s on val set: %f\n' % (scoring, test_scores.mean()))
 
 
 def calc_f1(clf, X_val, val_url, senti=None, threshold=0.139):
@@ -65,15 +66,21 @@ def calc_f1(clf, X_val, val_url, senti=None, threshold=0.139):
     if senti is None:
         senti = np.zeros(pred.shape[0])
     for i in range(pred.shape[0]):
+        no_result = 1
         for j in range(pred.shape[1]):
             if true[i][j] > 1 and pred[i][j] > 1:  # both == 2
                 continue
-            if pred[i][j] > 1:  # pred == 2 and true < 2, miss predicted
-                fn += 1
-            elif true[i][j] == senti[i]:  # correctly predicted
+            if true[i][j] == pred[i][j]:  # true == pred, correctly predicted
                 tp += 1
-            else:  # (true == 2 and pred < 2) or true != pred, wrongly predicted
+            if pred[i][j] < 2:
+                no_result = 0
                 fp += 1
+            if true[i][j] < 2:
+                fn += 1
+        fp += no_result
+
+    fn -= tp
+    fp -= tp
 
     print(tp, fp, fn, tp + fn)
     recall = tp / (tp + fn)
@@ -121,8 +128,8 @@ def train_clfs(clfs, X, y, test_size=0.2, validating=False, random_state=None):
             validate_clf(clf, X, y)
             continue
 
-        print("%s model is training" % clf_name)
-        if not validating:
+        else:
+            print("%s model is training" % clf_name)
             s_time = time()
             clf.fit(X_train, y_train)
             e_time = time()
@@ -130,13 +137,13 @@ def train_clfs(clfs, X, y, test_size=0.2, validating=False, random_state=None):
 
         y_pred = clf.predict(X_test)
         acc = accuracy_score(y_test, y_pred)
-        macro_f1 = f1_score(y_test, y_pred, average='macro')
+        macro_f1 = f1_score(y_test, y_pred, average='micro')
         print(" accuracy = %f\n f1_score = %f\n" % (acc, macro_f1))
 
     return clfs
 
 
-def validating(pkl_url=None):
+def validate(pkl_url=None):
     """ do validating
 
         Args:
@@ -144,58 +151,93 @@ def validating(pkl_url=None):
 
     """
     clfs = init_clfs()
-    val_url = from_project_root("processed_data/val_gold.csv")
+    val_url = from_project_root("data/preliminary/test_gold_ex.csv")
     if pkl_url is not None:
         # load from pickle
         print("loading data from", pkl_url)
         X, y, X_val = joblib.load(pkl_url)
 
     else:
-        train_url = from_project_root("processed_data/preliminary/train_ml.csv")
+        train_url = from_project_root("data/preliminary/train_ex.csv")
         # generate from original csv
         X, y, X_val = generate_vectors(train_url, val_url, column='article', max_n=3, min_df=2, max_df=0.8,
                                        max_features=200000, trans_type='dc', sublinear_tf=True, balanced=False,
-                                       multilabel_out=False, label_col='subjects', shuffle=True)
+                                       multilabel_out=False, label_col='subjects', only_single=True, shuffle=True)
 
     print(X.shape, y.shape, X_val.shape)
     train_clfs(clfs, X, y, validating=True, random_state=RANDOM_STATE)
     for name in clfs:
         print("metrics of %s classifier:" % name)
         clfs[name].fit(X, y)
-        calc_f1(clfs[name], X_val, val_url=val_url, senti=None, threshold=0.136)
+        calc_f1(clfs[name], X_val, val_url=val_url, senti=None, threshold=0.139)
 
 
-def generate_result():
-    train_url = from_project_root("processed_data/train_data.csv")
-    test_url = from_project_root("processed_data/test_data.csv")
+def gen_10bi_probas(train_url, test_url, validating=False):
+    """
+
+    Args:
+        train_url: url of csv train data
+        test_url: url of csv  test data
+        validating: whether to do validating
+
+    Returns:
+        stacked probabilities of belonging to each subjects
+
+    """
+    tdf = pd.read_csv(test_url)['content_id']
+    n_samples = len(tdf)
+    probas = np.empty(shape=(n_samples, 0))
+    for col in range(10):
+        X, y, X_test = generate_vectors(train_url, test_url, column='article', max_n=3, min_df=2, max_df=0.8,
+                                        max_features=200000, trans_type='dc', sublinear_tf=True, balanced=True,
+                                        multilabel_out=False, label_col=str(col), only_single=False, shuffle=True,
+                                        apply_fun=lambda label: int(label < 2))
+        clf = LinearSVC()
+        if validating:
+            print("validating on subject %s: \n" % id2sub(col))
+            validate_clf(clf, X, y, scoring='f1_micro')
+        clf.fit(X, y)
+        proba = predict_proba(clf, X_test)[:, :1]
+        probas = np.hstack((probas, proba))
+    print(probas[:3, :])
+    return probas
+
+
+def generate_result(evaluating=False):
+    cid_list = pd.read_csv(from_project_root('data/submit_example_2.csv'))['content_id'].tolist()
+    train_url = from_project_root("data/train_2_ex.csv")
+    test_url = from_project_root("data/test_public_2v3_ex.csv")
     X, y, X_test = generate_vectors(train_url, test_url, column='article', max_n=3, min_df=2, max_df=0.8,
                                     max_features=200000, trans_type='dc', sublinear_tf=True, balanced=False,
-                                    multilabel_out=False, label_col='subjects', shuffle=True)
+                                    multilabel_out=False, label_col='subjects', only_single=True, shuffle=True)
     # X, y, X_test = joblib.load(from_project_root('processed_data/vector/stacked_all_XyX_test_48_subjects.pk'))
 
     clf = LinearSVC()
-    # clf = XGBClassifier(n_jobs=N_JOBS)
     clf.fit(X, y)
     probas = predict_proba(clf, X_test).values
     cids = pd.read_csv(test_url, usecols=['content_id']).values.ravel()
-    result_file = open(from_project_root('processed_data/result/baseline_dc.csv'),
-                       'w', newline='\n', encoding='utf-8')
-    result_file.write("content_id,subject,sentiment_value,sentiment_word" + "\n")
+    result_df = pd.DataFrame(columns=["content_id", "subject", "sentiment_value", "sentiment_word"])
+
     for i, cid in enumerate(cids):
-        no_result = True
-        for j in range(N_CLASSES):
-            if probas[i][j] > 0.135:
-                no_result = False
-                out = ','.join([cid, id2sub(j), '0', '\n'])
-                result_file.write(out)
-        if no_result:
-            result_file.write(cid + ',,,\n')
-    result_file.close()
+        k = cid_list.count(cid)
+        for j in probas[i].argsort()[-k:]:
+            result_df = result_df.append({'content_id': cid, 'subject': id2sub(j), 'sentiment_value': '0'}
+                                         , ignore_index=True)
+        if k == 0:
+            result_df = result_df.append({'content_id': cid}, ignore_index=True)
+
+    save_url = from_project_root('data/result/result_dc_0.637.csv')
+    result_df.to_csv(save_url, index=False)
+    if evaluating:
+        evaluate(save_url)
 
 
 def main():
-    validating()
-    # generate_result()
+    # validate()
+    # generate_result(evaluating=False)
+    train_url = from_project_root("data/train_2_ex.csv")
+    test_url = from_project_root("data/test_public_2v3_ex.csv")
+    gen_10bi_probas(train_url, test_url, validating=True)
     pass
 
 

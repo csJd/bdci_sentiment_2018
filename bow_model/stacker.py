@@ -96,7 +96,8 @@ def run_parallel(index, train_url, test_url, params, clf, n_splits, random_state
     return index, y_pred_proba, y_test_pred_proba
 
 
-def feature_stacking(train_url, test_url, n_splits=CV, random_state=None, use_proba=False, verbose=False, drop_words=0.):
+def feature_stacking(train_url, test_url, n_splits=CV, random_state=None, use_proba=False, verbose=False,
+                     drop_words=0.):
     """
     Args:
         train_url: url to original train data
@@ -228,7 +229,8 @@ def main():
     save_url = from_project_root("processed_data/vector/stacked_all_XyX_val_%d_%s.pk" % (len(load_params()), LABEL_COL))
     train_url = from_project_root("processed_data/train_data.csv")
     test_url = from_project_root("processed_data/val_data.csv")
-    joblib.dump(feature_stacking(train_url, test_url, use_proba=True, random_state=RANDOM_STATE, drop_words=DROP_WORDS), save_url)
+    joblib.dump(feature_stacking(train_url, test_url, use_proba=True, random_state=RANDOM_STATE, drop_words=DROP_WORDS),
+                save_url)
 
 
 if __name__ == '__main__':
