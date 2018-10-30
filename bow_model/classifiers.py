@@ -10,7 +10,6 @@ from sklearn.externals import joblib
 from sklearn.metrics import f1_score, accuracy_score
 from time import time
 import numpy as np
-import scipy.sparse as sp
 import pandas as pd
 
 from preprocessing.prepare_data import generate_vectors, id2sub
@@ -160,8 +159,8 @@ def validate(pkl_url=None):
     else:
         train_url = from_project_root("data/preliminary/train_ex.csv")
         # generate from original csv
-        X, y, X_val = generate_vectors(train_url, val_url, column='article', max_n=3, min_df=2, max_df=0.8,
-                                       max_features=200000, trans_type='dc', sublinear_tf=True, balanced=False,
+        X, y, X_val = generate_vectors(train_url, val_url, column='article', max_n=3, min_df=3, max_df=0.8,
+                                       max_features=20000, trans_type='dc', sublinear_tf=True, balanced=True,
                                        multilabel_out=False, label_col='subjects', only_single=True, shuffle=True)
 
     print(X.shape, y.shape, X_val.shape)
@@ -194,50 +193,62 @@ def gen_10bi_probas(train_url, test_url, validating=False):
                                         apply_fun=lambda label: int(label < 2))
         clf = LinearSVC()
         if validating:
-            print("validating on subject %s: \n" % id2sub(col))
+            print("validating on subject %s:" % id2sub(col))
             validate_clf(clf, X, y, scoring='f1_micro')
         clf.fit(X, y)
-        proba = predict_proba(clf, X_test)[:, :1]
+        proba = predict_proba(clf, X_test)[:, 1:2]
         probas = np.hstack((probas, proba))
     print(probas[:3, :])
     return probas
 
 
-def generate_result(evaluating=False):
+def generate_result(evaluating=False, use_n_subjects=False):
+    """
+
+    Args:
+        evaluating: evaluating use preliminary data
+        use_n_subjects: use n_subjects info
+
+    Returns:
+
+    """
     cid_list = pd.read_csv(from_project_root('data/submit_example_2.csv'))['content_id'].tolist()
     train_url = from_project_root("data/train_2_ex.csv")
     test_url = from_project_root("data/test_public_2v3_ex.csv")
-    X, y, X_test = generate_vectors(train_url, test_url, column='article', max_n=3, min_df=2, max_df=0.8,
-                                    max_features=200000, trans_type='dc', sublinear_tf=True, balanced=False,
+    if evaluating:
+        train_url = from_project_root("data/preliminary/train_ex.csv")
+        test_url = from_project_root("data/preliminary/test_public_ex.csv")
+
+    X, y, X_test = generate_vectors(train_url, test_url, column='article', max_n=3, min_df=3, max_df=0.8,
+                                    max_features=20000, trans_type='dc', sublinear_tf=True, balanced=True,
                                     multilabel_out=False, label_col='subjects', only_single=True, shuffle=True)
     # X, y, X_test = joblib.load(from_project_root('processed_data/vector/stacked_all_XyX_test_48_subjects.pk'))
 
-    clf = LinearSVC()
-    clf.fit(X, y)
-    probas = predict_proba(clf, X_test).values
+    # clf = LinearSVC()
+    # clf.fit(X, y)
+    # probas = predict_proba(clf, X_test)
+    probas = gen_10bi_probas(train_url, test_url, validating=True)
     cids = pd.read_csv(test_url, usecols=['content_id']).values.ravel()
     result_df = pd.DataFrame(columns=["content_id", "subject", "sentiment_value", "sentiment_word"])
 
     for i, cid in enumerate(cids):
-        k = cid_list.count(cid)
+        k = cid_list.count(cid) if use_n_subjects else 1
         for j in probas[i].argsort()[-k:]:
-            result_df = result_df.append({'content_id': cid, 'subject': id2sub(j), 'sentiment_value': '0'}
-                                         , ignore_index=True)
+            result_df = result_df.append({'content_id': cid, 'subject': id2sub(j), 'sentiment_value': '0'},
+                                         ignore_index=True)
         if k == 0:
             result_df = result_df.append({'content_id': cid}, ignore_index=True)
 
-    save_url = from_project_root('data/result/result_dc_0.637.csv')
+    save_url = from_project_root('data/result/bdc_0.6277.csv')
     result_df.to_csv(save_url, index=False)
     if evaluating:
-        evaluate(save_url)
+        evaluate(save_url, use_senti=False)
+        evaluate(save_url, use_senti=True)
 
 
 def main():
     # validate()
-    # generate_result(evaluating=False)
-    train_url = from_project_root("data/train_2_ex.csv")
-    test_url = from_project_root("data/test_public_2v3_ex.csv")
-    gen_10bi_probas(train_url, test_url, validating=True)
+    generate_result(evaluating=True)
     pass
 
 

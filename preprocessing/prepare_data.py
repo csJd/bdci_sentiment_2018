@@ -45,15 +45,15 @@ def gen_rematch_val():
 
     """
     train_df = pd.read_csv(from_project_root("data/train_2.csv"))
-    test_df = pd.read_csv(from_project_root("data/test_public.csv"))
+    test_df = pd.read_csv(from_project_root("data/preliminary/test_public.csv"))
     val_df = test_df.merge(train_df, on='content') \
         .drop(columns=['content_id_y']) \
         .rename(columns={'content_id_x': 'content_id'})
-    val_df.to_csv(from_project_root('data/test_gold.csv'), index=False)
+    val_df.to_csv(from_project_root('data/preliminary/test_gold.csv'), index=False)
 
     test_df = pd.read_csv(from_project_root("data/test_public_2.csv"))
     test_df = test_df[~test_df['content_id'].isin(val_df['content_id'])]
-    test_df.to_csv('data/test.csv', index=False)
+    test_df.to_csv('data/test_2.csv', index=False)
 
 
 def extend_data(data_url):
@@ -89,14 +89,18 @@ def extend_data(data_url):
     df.to_csv(save_url, index=False)
 
 
-def split_data():
+def split_data(data_url, test_size=0.2):
     """ split data into train dta and validate data
 
+    Args:
+        data_url: str, url of data file to be split
+        test_size: float, test_size for train_test_split
+
     """
-    data_df = pd.read_csv(from_project_root('processed_data/train_ml.csv'))
-    train_df, val_df = train_test_split(data_df, test_size=0.1, shuffle=True, random_state=233)
-    train_df.to_csv(from_project_root('processed_data/train_data.csv'), index=False)
-    val_df.to_csv(from_project_root('processed_data/val_data.csv'), index=False)
+    data_df = pd.read_csv(data_url)
+    train_df, val_df = train_test_split(data_df, test_size=test_size, shuffle=True, random_state=233)
+    train_df.to_csv(data_url.replace('.csv', '_train.csv'), index=False)
+    val_df.to_csv(data_url.replace('.csv', '_val.csv'), index=False)
 
 
 def generate_vectors(train_url, test_url=None, column='article', trans_type=None, max_n=1, min_df=1, max_df=1.0,

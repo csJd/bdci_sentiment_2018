@@ -5,14 +5,17 @@ import pandas as pd
 from utils.path_util import from_project_root
 
 
-def evaluate(pred_url):
+def evaluate(pred_url, use_senti=True):
     """ evaluate result file of preliminary test data
 
     Args:
-        pred_url: url of predicted result file
+        pred_url: str, url of predicted result file
+        use_senti: bool, use sentiment_value column or not
 
     """
-    usecols = ['content_id', 'subject', 'sentiment_value']
+    usecols = ['content_id', 'subject']
+    if use_senti:
+        usecols.append('sentiment_value')
     true_df = pd.read_csv(from_project_root('data/preliminary/test_gold.csv'), usecols=usecols)
     pred_df = pd.read_csv(pred_url, usecols=usecols)
 
@@ -32,7 +35,7 @@ def evaluate(pred_url):
 
 
 def main():
-    evaluate(from_project_root('data/0.6485_pre_b.csv'))
+    evaluate(from_project_root('data/tmp.csv'))
     pass
 
 
