@@ -40,17 +40,18 @@ def predict_proba(clf, X_test, X=None, y=None, save_url=None, n_classes=None):
         DataFrame: proba_df
 
     """
-    if hasattr(clf, 'predict_proba'):
+    try:
         proba = clf.predict_proba(X_test)
-    elif hasattr(clf, '_predict_proba_lr'):
-        proba = clf._predict_proba_lr(X_test)
-    else:
-        if X is None or y is None:
-            print("X and y is required for CalibratedClassifierCV")
-            return
-        clf = CalibratedClassifierCV(clf)
-        clf.fit(X, y)
-        proba = clf.predict_proba(X_test)
+    except AttributeError:
+        try:
+            proba = clf._predict_proba_lr(X_test)
+        except AttributeError:
+            if X is None or y is None:
+                print("X and y is required for CalibratedClassifierCV")
+                return
+            clf = CalibratedClassifierCV(clf)
+            clf.fit(X, y)
+            proba = clf.predict_proba(X_test)
 
     if n_classes is None:
         return proba

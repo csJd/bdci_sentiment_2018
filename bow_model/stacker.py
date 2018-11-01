@@ -43,6 +43,47 @@ def load_params():
         },
     ]  # 48
 
+    # Hybrid dc idf
+    params_grad = [
+        {
+            'column': ['cut_all'],
+            'trans_type': ['dc'],
+            'max_n': [2],
+            'min_df': [3],
+            'max_df': [0.8],
+            'max_features': [20000, 3000],
+            'balanced': [False, True],
+        },  # 4
+        {
+            'column': ['word_seg', 'article'],
+            'trans_type': ['dc'],
+            'max_n': [3],
+            'min_df': [3],
+            'max_df': [0.8],
+            'max_features': [20000, 5000],
+            'balanced': [False, True],
+            're_weight': [0, 9]
+        },  # 16
+        {
+            'column': ['word_seg', 'article'],
+            'trans_type': ['idf'],
+            'max_n': [3],
+            'min_df': [3],
+            'max_df': [0.8],
+            'max_features': [20000, 3000],
+            'balanced': [False, True],
+        },  # 8
+        {
+            'column': ['article'],
+            'trans_type': ['dc'],
+            'max_n': [4],
+            'min_df': [3],
+            'max_df': [0.8],
+            'max_features': [20000, 5000],
+            'balanced': [False, True],
+        },  # 4
+    ]  # 32
+
     params_list = list()
     for params_dict in params_grad:
         keys, value_lists = zip(*(params_dict.items()))
@@ -226,9 +267,9 @@ def generate_meta_feature(data_url, normalize=True):
 def main():
     params = load_params()
     print("len(params) =", len(params))
-    save_url = from_project_root("processed_data/vector/stacked_all_XyX_val_%d_%s.pk" % (len(load_params()), LABEL_COL))
-    train_url = from_project_root("processed_data/train_data.csv")
-    test_url = from_project_root("processed_data/val_data.csv")
+    save_url = from_project_root("data/vector/stacked_all_XyX_test_%d_%s.pk" % (len(load_params()), LABEL_COL))
+    train_url = from_project_root("data/train_2_ex.csv")
+    test_url = from_project_root("data//test_public_2v3_ex.csv")
     joblib.dump(feature_stacking(train_url, test_url, use_proba=True, random_state=RANDOM_STATE, drop_words=DROP_WORDS),
                 save_url)
 
