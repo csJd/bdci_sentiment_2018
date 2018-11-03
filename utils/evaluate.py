@@ -25,13 +25,12 @@ def evaluate(pred_url, use_senti=True):
     tp = len(true_df.merge(pred_df, on=usecols))
     fp = len(pred_df) - tp
     fn = len(true_df) - tp
-
-    print(tp, fp, fn, tp + fn)
+    print("metrics on test set of preliminary%s:" % ("" if use_senti else " without sentiment"))
+    print(" tp = %d, fp = %d, fn = %d, n_samples = %d" % (tp, fp, fn, tp + fn))
     recall = tp / (tp + fn)
     precision = tp / (tp + fp)
     micro_f1 = 2 * recall * precision / (recall + precision)
-    print("metrics on test set of preliminary: \n recall = %f, precision = %f, micro_f1 = %f\n"
-          % (recall, precision, micro_f1))
+    print(" recall = %f, precision = %f, micro_f1 = %f\n" % (recall, precision, micro_f1))
 
 
 def main():
