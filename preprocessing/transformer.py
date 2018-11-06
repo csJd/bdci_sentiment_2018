@@ -48,12 +48,12 @@ class TfdcTransformer(BaseEstimator, TransformerMixin):
         self.re_weight = re_weight
 
     def fit(self, X, y):
-        """Learn the idf vector (global term weights)
+        """Learn the dc vector (global term weights)
         Parameters
         ----------
         X : sparse matrix, [n_samples, n_features]
             a matrix of term/token counts
-        y : labels of each samples, [n_samples,]
+        y : labels of each samples, [n_samples,], [n_samples, n_labels]
         """
         if not sp.issparse(X):
             X = sp.csc_matrix(X)
@@ -72,10 +72,11 @@ class TfdcTransformer(BaseEstimator, TransformerMixin):
             smooth_dc = int(self.smooth_dc)
 
             # all labels
-            labels = set(y)
+            labels = set(y) if len(y.shape) == 1 else range(y.shape[1])
             # print(X.shape, y.shape)
             for label in labels:
-                label_X = X[y == label]
+                # sliced data of specific label
+                label_X = X[y == label] if len(y.shape) == 1 else X[y[:, label] == 1]
                 label_tfs = np.asarray(label_X.sum(axis=0)).ravel()  # f(t, Ci)
 
                 # calculate sum of p(t, Ci) for bdc
@@ -92,7 +93,7 @@ class TfdcTransformer(BaseEstimator, TransformerMixin):
                 # initialize bdc
                 dc = np.ones(n_features)
                 for label in labels:
-                    label_X = X[y == label]  # sliced data of specific label
+                    label_X = X[y == label] if len(y.shape) == 1 else X[y[:, label] == 1]
                     label_tfs = np.asarray(label_X.sum(axis=0)).ravel()  # f(t, Ci) for dc
                     label_tps = label_tfs / label_tfs.sum()  # p(t, Ci) for bdc
                     label_h = label_tps / tps
@@ -106,7 +107,7 @@ class TfdcTransformer(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X, copy=True):
-        """Transform a count matrix to a tf or tf-idf representation
+        """Transform a count matrix to a tf or tf-dc representation
         Parameters
         ----------
         X : sparse matrix, [n_samples, n_features]

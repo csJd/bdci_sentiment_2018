@@ -24,28 +24,28 @@ from bow_model.classes import LinearSVCP
 N_JOBS = 6
 N_CLASSES = 10
 RANDOM_STATE = 10
-CV = 5
 
 
-def validate_clf(clf, X, y, scoring='f1_micro'):
+def validate_clf(clf, X, y, cv=5, scoring='f1_micro'):
     """ do cross validation on clf
 
     Args:
         clf: clf to be tuned
         X: X for fit
         y: y for fit
+        cv: cv for cross validate
         scoring: scoring for cross validate
 
     """
     s_time = time()
-    cv_result = cross_validate(clf, X, y, cv=CV, scoring=scoring, n_jobs=N_JOBS, return_train_score=True)
+    cv_result = cross_validate(clf, X, y, cv=cv, scoring=scoring, n_jobs=N_JOBS, return_train_score=True)
     train_scores = cv_result['train_score']
     test_scores = cv_result['test_score']
     e_time = time()
     # print cv results
     print("validation is done in %.3f seconds" % (e_time - s_time))
     print("metrics of each cv: ")
-    for i in range(CV):
+    for i in range(cv):
         print(" train_f1 %f, val_f1 %f" % (train_scores[i], test_scores[i]))
     print('averaged %s on val set: %f\n' % (scoring, test_scores.mean()))
 
@@ -122,52 +122,13 @@ def init_clfs():
     return clfs
 
 
-def train_clfs(clfs, X, y, test_size=0.2, validating=False, random_state=None):
-    """ train clfs
-
-    Args:
-        clfs: classifiers
-        X: data X of shape (samples_num, feature_num)
-        y: target y of shape (samples_num,)
-        test_size: test_size for train_test_split
-        validating: whether to validate classifiers
-        random_state: random_state for train_test_split
-
-    """
-
-    # split data into train and test
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=random_state, stratify=y)
-    print("train data shape", X_train.shape, y_train.shape)
-    print("dev data shape  ", X_test.shape, y_test.shape)
-    for clf_name in clfs:
-        clf = clfs[clf_name]
-        if validating:
-            print("validation on %s is running" % clf_name)
-            validate_clf(clf, X, y)
-            continue
-
-        else:
-            print("%s model is training" % clf_name)
-            s_time = time()
-            clf.fit(X_train, y_train)
-            e_time = time()
-            print(" training finished in %.3f seconds" % (e_time - s_time))
-
-        y_pred = clf.predict(X_test)
-        acc = accuracy_score(y_test, y_pred)
-        macro_f1 = f1_score(y_test, y_pred, average='micro')
-        print(" accuracy = %f\n f1_score = %f\n" % (acc, macro_f1))
-
-    return clfs
-
-
-def validate(pkl_url=None, cv=False):
+def validate(pkl_url=None, cv=5, evaluating=False):
     """ do validating
 
         Args:
             pkl_url: load data from pickle file, set to None to generate data instantly
             cv: do cross validation or not
+            evaluating: whether to do evaluating on test_gold
 
     """
     clfs = init_clfs()
@@ -176,7 +137,6 @@ def validate(pkl_url=None, cv=False):
         # load from pickle
         print("loading data from", pkl_url)
         X, y, X_val = joblib.load(pkl_url)
-
     else:
         train_url = from_project_root("data/preliminary/train_ex.csv")
         # generate from original csv
@@ -184,17 +144,19 @@ def validate(pkl_url=None, cv=False):
                                        max_features=20000, trans_type='dc', sublinear_tf=True, balanced=True,
                                        multilabel_out=False, label_col='subjects', only_single=True, shuffle=True)
 
-    print(X.shape, y.shape, X_val.shape)
-    if cv:
-        train_clfs(clfs, X, y, validating=True, random_state=RANDOM_STATE)
-
+    print("data shapes:\n", X.shape, y.shape, X_val.shape)
     for name, clf in clfs.items():
-        print("metrics of %s classifier:" % name)
-        clf.fit(X, y)
-        y_true = pd.read_csv(val_url, usecols=list(map(str, range(10)))).values < 2
-        y_pred = clf.predict(X_val)
-        y_probas = predict_proba(clf, X_val)
-        calc_metrics(y_true, y_pred, y_probas)
+        if len(y.shape) > 1:
+            clf = OneVsRestClassifier(clf)
+        print("cross validation on %s is running" % name)
+        validate_clf(clf, X, y, cv=5, scoring='f1_micro')
+        if evaluating:
+            print("metrics of %s classifier:" % name)
+            clf.fit(X, y)
+            y_true = pd.read_csv(val_url, usecols=list(map(str, range(10)))).values < 2
+            y_pred = clf.predict(X_val)
+            y_probas = predict_proba(clf, X_val)
+            calc_metrics(y_true, y_pred, y_probas)
 
 
 def gen_10bi_result(train_url, test_url, validating=False):
@@ -234,7 +196,9 @@ def gen_multi_result(X, y, X_test):
     """
 
     Args:
-        validating: do validating
+        X:
+        y:
+        X_test:
 
     Returns:
 
@@ -250,27 +214,27 @@ def gen_multi_result(X, y, X_test):
     return y_pred, y_probas
 
 
-def generate_result(evaluating=False, use_n_subjects='pred'):
-    """
+def generate_result(evaluating=False, use_n_subjects='pred', senti_url=None):
+    """ generate result
 
     Args:
         evaluating: evaluating use preliminary data
         use_n_subjects: use n_subjects info, 'gold', 'pred' or 'one'
-
-    Returns:
+        url to sentiment result
 
     """
     train_url = from_project_root("data/train_2_ex.csv")
     test_url = from_project_root("data/test_public_2v3_ex.csv")
+    senti = None
     if evaluating:
         train_url = from_project_root("data/preliminary/train_ex.csv")
         test_url = from_project_root("data/preliminary/test_gold_ex.csv")
-        senti = joblib.load(from_project_root("data/vector/stacked_one_XyX_val_32_sentiment.xgb.result.pk"))
+        senti = joblib.load(senti_url)
 
     X, y, X_test = generate_vectors(train_url, test_url, column='article', max_n=3, min_df=3, max_df=0.8,
-                                    max_features=33333, trans_type='dc', sublinear_tf=True, balanced=True,
+                                    max_features=20000, trans_type='dc', sublinear_tf=True, balanced=True,
                                     multilabel_out=False, label_col='subjects', only_single=True, shuffle=True)
-    X, y, X_test = joblib.load(from_project_root('data/vector/stacked_one_XyX_val_32_subjects.pk'))
+    X, y, X_test = joblib.load(from_project_root('data/vector/stacked_one_XyX_test_32_subjects.pk'))
 
     clf = LinearSVC()
     clf.fit(X, y)
@@ -287,7 +251,7 @@ def generate_result(evaluating=False, use_n_subjects='pred'):
         elif use_n_subjects == 'pred':
             k = max(1, pred[i].sum())
         for j in probas[i].argsort()[-k:]:
-            senti_val = senti[i] if evaluating else 0
+            senti_val = 0 if senti is None else senti[i]
             result_df = result_df.append({'content_id': cid, 'subject': id2sub(j), 'sentiment_value': senti_val},
                                          ignore_index=True)
 
@@ -312,7 +276,7 @@ def gen_senti_result(pkl_url):
 def main():
     # pkl_url = from_project_root("data/vector/stacked_one_XyX_val_32_sentiment.pk")
     # validate(pkl_url=pkl_url)
-    generate_result(evaluating=True, use_n_subjects='pred')
+    generate_result(evaluating=False, use_n_subjects='one')
     # gen_senti_result(pkl_url)
     pass
 
