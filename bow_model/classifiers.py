@@ -66,10 +66,9 @@ def calc_metrics(y_true, y_pred, y_probas=None):
     if len(y_pred.shape) == 3:
         y_pred = y_pred[:, :, 1].T
 
-    print("metrics before fill non result samples:")
-    print(" precision on subject: %f" % precision_score(y_true, y_pred, average='micro'))
-    print(" recall    on subject: %f" % recall_score(y_true, y_pred, average='micro'))
-    print(" micro f1  on subject: %f\n" % f1_score(y_true, y_pred, average='micro'))
+    names = ['价格', '配置', '操控', '舒适', '油耗', '动力', '内饰', '安全', '空间', '外观']
+    print("\ndetails before fill non result samples:\n")
+    print(classification_report(y_true, y_pred, target_names=names, digits=6))
 
     # if y_probas gave, make sure each sample has at least 1 label
     if y_probas is not None:
@@ -78,7 +77,6 @@ def calc_metrics(y_true, y_pred, y_probas=None):
                 row[y_probas[i].argmax()] = 1
 
     print("details after fill non result with argmax:\n")
-    names = ['价格', '配置', '操控', '舒适', '油耗', '动力', '内饰', '安全', '空间', '外观']
     print(classification_report(y_true, y_pred, target_names=names, digits=6))
 
     # pred[pred < threshold] = 2
@@ -159,13 +157,14 @@ def validate(pkl_url=None, cv=5, evaluating=False):
             calc_metrics(y_true, y_pred, y_probas)
 
 
-def gen_10bi_result(train_url, test_url, validating=False):
+def gen_10bi_result(train_url, test_url, validating=False, evaluating=False):
     """
 
     Args:
         train_url: url of csv train data
         test_url: url of csv  test data
         validating: whether to do validating
+        evaluating: whether to do evaluating on test_gold
 
     Returns:
         stacked probabilities of belonging to each subjects
@@ -176,31 +175,37 @@ def gen_10bi_result(train_url, test_url, validating=False):
     y_probas = np.empty(shape=(n_samples, 0))
     y_pred = np.empty(shape=(n_samples, 0), dtype=int)
     for col in range(10):
-        X, y, X_test = generate_vectors(train_url, test_url, column='article', max_n=3, min_df=2, max_df=0.8,
-                                        max_features=33333, trans_type='dc', sublinear_tf=True, balanced=True,
-                                        multilabel_out=False, label_col='subjects', only_single=False, shuffle=True,
-                                        apply_fun=lambda label: int(str(col) in label))
+        # X, y, X_test = generate_vectors(train_url, test_url, column='article', max_n=3, min_df=3, max_df=0.8,
+        #                                 max_features=30000, trans_type='dc', sublinear_tf=True, balanced=True,
+        #                                 multilabel_out=False, label_col='subjects', only_single=False, shuffle=True,
+        #                                 apply_fun=lambda label: str(col) in label)
+        X, y, X_test = joblib.load(from_project_root("data/vector/stacked_all_XyX_val_32_%d.pk" % col))
         clf = LinearSVC()
+        print("running on subject %s" % id2sub(col))
         if validating:
-            print("validating on subject %s:" % id2sub(col))
-            validate_clf(clf, X, y, scoring='f1_micro')
+            validate_clf(clf, X, y, scoring='f1')
         clf.fit(X, y)
         proba = predict_proba(clf, X_test)[:, 1:2]
         y_probas = np.hstack((y_probas, proba))
         y_pred = np.hstack((y_pred, clf.predict(X_test).reshape(-1, 1)))
 
+    if evaluating:
+        y_true = pd.read_csv(test_url, usecols=list(map(str, range(10)))).values < 2
+        calc_metrics(y_true, y_pred, y_probas)
     return y_pred, y_probas
 
 
 def gen_multi_result(X, y, X_test):
-    """
+    """ generate multilabel result use ovr classifier
 
     Args:
-        X:
-        y:
-        X_test:
+        X: (n_samples, n_features)
+        y: (n_samples,) or (n_samples, n_labels)
+        X_test: (n_samples, n_features)
 
     Returns:
+        y_pred: (n_samples, n_labels)
+        y_probas: (n_samples, n_labels)
 
     """
     clf = OneVsRestClassifier(LogisticRegression(solver='liblinear'))
@@ -229,18 +234,18 @@ def generate_result(evaluating=False, use_n_subjects='pred', senti_url=None):
     if evaluating:
         train_url = from_project_root("data/preliminary/train_ex.csv")
         test_url = from_project_root("data/preliminary/test_gold_ex.csv")
-        senti = joblib.load(senti_url)
+        senti = joblib.load(senti_url) if senti_url else None
 
     X, y, X_test = generate_vectors(train_url, test_url, column='article', max_n=3, min_df=3, max_df=0.8,
-                                    max_features=20000, trans_type='dc', sublinear_tf=True, balanced=True,
+                                    max_features=20000, trans_type='hashing', sublinear_tf=True, balanced=True,
                                     multilabel_out=False, label_col='subjects', only_single=True, shuffle=True)
-    X, y, X_test = joblib.load(from_project_root('data/vector/stacked_one_XyX_test_32_subjects.pk'))
+    X, y, X_test = joblib.load(from_project_root('data/vector/stacked_one_XyX_val_32_subjects.pk'))
 
     clf = LinearSVC()
     clf.fit(X, y)
     # pred, probas = clf.predict(X_test), predict_proba(clf, X_test)
-    # pred, probas = gen_10bi_result(train_url, test_url, validating=True)
-    pred, probas = gen_multi_result(X, y, X_test)
+    pred, probas = gen_10bi_result(train_url, test_url, validating=True, evaluating=True)
+    # pred, probas = gen_multi_result(X, y, X_test)
     result_df = pd.DataFrame(columns=["content_id", "subject", "sentiment_value", "sentiment_word"])
     cids = pd.read_csv(test_url, usecols=['content_id']).values.ravel()
     for i, cid in enumerate(cids):
@@ -275,8 +280,8 @@ def gen_senti_result(pkl_url):
 
 def main():
     # pkl_url = from_project_root("data/vector/stacked_one_XyX_val_32_sentiment.pk")
-    # validate(pkl_url=pkl_url)
-    generate_result(evaluating=False, use_n_subjects='one')
+    # validate(pkl_url=None)
+    generate_result(evaluating=True, use_n_subjects='pred')
     # gen_senti_result(pkl_url)
     pass
 

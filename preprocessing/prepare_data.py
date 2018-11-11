@@ -5,7 +5,7 @@ import jieba
 import pandas as pd
 import numpy as np
 from time import time
-from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer, HashingVectorizer
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MultiLabelBinarizer
 
@@ -56,24 +56,27 @@ def gen_rematch_val():
     test_df.to_csv('data/test_2.csv', index=False)
 
 
-def extend_data(data_url):
+def extend_data(data_url, for_sentiment=True):
     """ generate more information into data file
 
         Args:
             data_url: url to original data file
+            for_sentiment: process for sentiment
 
     """
     df_orig = pd.read_csv(data_url)
 
-    df = df_orig[['content_id', 'content']].drop_duplicates()
+    df = df_orig[['content_id', 'content']].drop_duplicates() if not for_sentiment else df_orig
     jieba.load_userdict(from_project_root('data/processed/user_dict.txt'))
 
+    if for_sentiment:
+        df['content'] = df['content'] + df['subject']
     df['content'] = df['content'].apply(str.strip)
     df['word_seg'] = df['content'].apply(lambda text: ' '.join(jieba.cut(text)))
     df['cut_all'] = df['content'].apply(lambda text: ' '.join(jieba.cut(text, cut_all=True)))
     df['cut_for_search'] = df['content'].apply(lambda text: ' '.join(jieba.cut_for_search(text)))
 
-    if 'subject' in df_orig:
+    if 'subject' in df_orig and not for_sentiment:
         for subject_id, subject in enumerate(SUBJECT_LIST):
             df[str(subject_id)] = df['content_id'].apply(
                 lambda cid: get_subject_sent(df_orig, cid, subject))
@@ -85,7 +88,8 @@ def extend_data(data_url):
         df['n_subjects'] = df['subjects'].apply(lambda subs: len(subs.split()))
 
     df = df.rename(columns={'content': 'article'})
-    save_url = data_url.replace('.csv', '_ex.csv')
+    new_suffix = '_exs.csv' if for_sentiment else '_ex.csv'
+    save_url = data_url.replace('.csv', new_suffix)
     df.to_csv(save_url, index=False)
 
 
@@ -106,14 +110,14 @@ def split_data(data_url, test_size=0.2):
 def generate_vectors(train_url, test_url=None, column='article', trans_type=None, max_n=1, min_df=1, max_df=1.0,
                      max_features=1, sublinear_tf=True, balanced=False, re_weight=0, verbose=False, drop_words=0,
                      multilabel_out=False, label_col='subjects', only_single=True, shuffle=True,
-                     apply_fun=lambda labels: int(labels.split()[0])):
+                     apply_fun=None):
     """ generate X, y, X_test vectors with csv(with header) url use pandas and CountVectorizer
 
     Args:
         train_url: url to train csv
         test_url: url to test csv, set to None if not need X_test
         column: column to use as feature
-        trans_type: specific transformer, {'dc','idf'}
+        trans_type: specific transformer, {'dc','idf', 'hashing'}
         max_n: max_n for ngram_range
         min_df: min_df for CountVectorizer
         max_df: max_df for CountVectorizer
@@ -142,13 +146,12 @@ def generate_vectors(train_url, test_url=None, column='article', trans_type=None
         train_df = train_df[train_df['subjects'].apply(lambda x: len(x) < 2)]
 
     # vectorizer
+    s_time = time()
     analyzer = 'word' if column == 'word_seg' else 'char'
     vec = CountVectorizer(analyzer=analyzer, ngram_range=(1, max_n), min_df=min_df, max_df=max_df,
                           max_features=max_features, token_pattern='\w+')
-    s_time = time()
     verbose and print("finish loading, vectorizing")
     verbose and print("vectorizer params:", vec.get_params())
-
     sequences = train_df[column]
     # delete some words randomly
     for i, row in enumerate(sequences):
@@ -157,42 +160,43 @@ def generate_vectors(train_url, test_url=None, column='article', trans_type=None
         if np.random.ranf() < drop_words:
             row = np.array(row.split())
             sequences.at[i] = ' '.join(row[np.random.ranf(row.shape) > 0.35])
-
-    X = vec.fit_transform(sequences)
+    X = sequences if trans_type == 'hashing' else vec.fit_transform(sequences)
     e_time = time()
     verbose and print("finish vectorizing in %.3f seconds, transforming" % (e_time - s_time))
+
     # transformer
     if trans_type is None or trans_type == 'idf':
         trans = TfidfTransformer(sublinear_tf=sublinear_tf, use_idf=balanced)
-    else:
+    elif trans_type == 'dc':
         trans = TfdcTransformer(sublinear_tf=sublinear_tf, balanced=balanced, re_weight=re_weight)
-
-    verbose and print("transformer params:", trans.get_params())
-    if multilabel_out:
-        y = MultiLabelBinarizer().fit_transform(train_df[label_col].apply(str.split))
     else:
-        if apply_fun is None:
-            y = train_df[label_col].values
-        else:
-            y = train_df[label_col].apply(apply_fun).values
+        trans = HashingVectorizer(analyzer=analyzer, ngram_range=(1, max_n), n_features=max_features,
+                                  token_pattern='\w+', binary=not balanced)
+    verbose and print(trans_type, "transformer params:", trans.get_params())
 
+    if multilabel_out:
+        mlb = MultiLabelBinarizer()
+        y = mlb.fit_transform(train_df[label_col].apply(str.split))
+        verbose and print("multilabel columns:\n", mlb.classes_)
+    else:
+        y = train_df[label_col].apply(apply_fun).values if apply_fun is not None \
+            else train_df[label_col].values
     X = trans.fit_transform(X, y)
 
     X_test = None
     if test_url:
         verbose and print("transforming test set")
         test_df = pd.read_csv(test_url)
-        X_test = vec.transform(test_df[column])
+        X_test = test_df[column] if trans_type == 'hashing' else vec.transform(test_df[column])
         X_test = trans.transform(X_test)
-
     s_time = time()
     verbose and print("finish transforming in %.3f seconds\n" % (s_time - e_time))
     return X, y, X_test
 
 
 def main():
-    data_url = from_project_root("data/train_2.csv")
-    extend_data(data_url)
+    data_url = from_project_root("data/preliminary/best_subject.csv")
+    extend_data(data_url, for_sentiment=True)
     pass
 
 

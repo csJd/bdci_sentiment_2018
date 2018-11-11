@@ -22,13 +22,14 @@ from preprocessing.prepare_data import generate_vectors
 from utils.proba_util import predict_proba
 from bow_model.classes import LinearSVCP
 
-N_CLASSES = 10
+N_CLASSES = 3
 RANDOM_STATE = 2333
 DROP_WORDS = 0
 N_JOBS = 7
-CV = 5
-LABEL_COL = 'subjects'
-ONLY_SINGLE = True
+CV = 10
+LABEL_COL = 'sentiment_value'
+ONLY_SINGLE = False
+APPLY_FUN = None
 
 
 def load_params():
@@ -90,6 +91,49 @@ def load_params():
         },  # 4
     ]  # 32
 
+    params_grad = [
+        {
+            'column': ['word_seg'],
+            'trans_type': ['dc', 'idf'],
+            'max_n': [1],
+            'min_df': [2],
+            'max_df': [0.9],
+            'max_features': [20000],
+            'balanced': [False, True],
+            're_weight': [0]
+        },  # 4
+        {
+            'column': ['word_seg', 'article'],
+            'trans_type': ['dc'],
+            'max_n': [2],
+            'min_df': [3],
+            'max_df': [0.8],
+            'max_features': [20000, 3000],
+            'balanced': [False, True],
+            're_weight': [9]
+        },  # 8
+        {
+            'column': ['word_seg', 'article'],
+            'trans_type': ['dc'],
+            'max_n': [3],
+            'min_df': [3],
+            'max_df': [0.8],
+            'max_features': [20000, 3000],
+            'balanced': [False, True],
+            're_weight': [0, 9]
+        },  # 16
+
+        {
+            'column': ['word_seg', 'article'],
+            'trans_type': ['idf'],
+            'max_n': [3],
+            'min_df': [3],
+            'max_df': [0.8],
+            'max_features': [20000, 3000],
+            'balanced': [False, True],
+        },  # 8
+    ]  # 36
+
     params_list = list()
     for params_dict in params_grad:
         keys, value_lists = zip(*(params_dict.items()))
@@ -121,7 +165,7 @@ def run_parallel(index, train_url, test_url, params, clf, n_splits, random_state
     """
 
     X, y, X_test = generate_vectors(train_url, test_url, drop_words=drop_words, verbose=verbose, label_col=LABEL_COL,
-                                    shuffle=False, only_single=only_single, **params)
+                                    shuffle=False, only_single=only_single, apply_fun=APPLY_FUN, **params)
     if not sp.sparse.isspmatrix_csr(X):
         X = sp.sparse.csr_matrix(X)
 
@@ -165,8 +209,8 @@ def feature_stacking(train_url, test_url, n_splits=CV, random_state=None, use_pr
 
     clf = LinearSVCP()
     # test_url = None
-    X, y, X_test = generate_vectors(train_url, test_url, only_single=only_single, shuffle=False,
-                                    sublinear_tf=False, label_col=LABEL_COL)  # for X.shape and y
+    X, y, X_test = generate_vectors(train_url, test_url, only_single=only_single, shuffle=False, sublinear_tf=False,
+                                    label_col=LABEL_COL, apply_fun=APPLY_FUN)  # for X.shape and y
 
     params_list = load_params()
     parallel = joblib.Parallel(n_jobs=N_JOBS, verbose=True)
@@ -331,12 +375,14 @@ def gen_feature_stacking_result(gen_type='val'):
     """
     params = load_params()
     print("len(params) =", len(params))
-    save_url = from_project_root("data/vector/stacked_%s_XyX_%s_%d_%s.pk"
+    save_url = from_project_root("data/vector/stacked_%s_XyX_%s_%d_%sc.pk"
                                  % (('one' if ONLY_SINGLE else 'all'), gen_type, len(load_params()), LABEL_COL))
     print("stacking data will be saved at", save_url)
     if gen_type == 'val':
         train_url = from_project_root("data/preliminary/train_ex.csv")
         test_url = from_project_root("data/preliminary/test_gold_ex.csv")
+        # train_url = from_project_root("data/preliminary/train_exs.csv")
+        # test_url = from_project_root("data/preliminary/best_subject_exs.csv")
     elif gen_type == 'test':
         train_url = from_project_root("data/train_2_ex.csv")
         test_url = from_project_root("data/test_public_2v3_ex.csv")
